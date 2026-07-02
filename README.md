@@ -59,6 +59,10 @@ If you use this plugin e.g. in a publication, please cite it as:
 
 And
 
+Maria Irena Szawerna, David Alfter, and Elena Volodina. 2025. [Annotating Personal Information in Swedish Texts with SPARV.](https://aclanthology.org/2025.lm4dh-1.15/) In _Proceedings of the First Workshop on Natural Language Processing and Language Models for Digital Humanities_, pages 155–163, Varna, Bulgaria. INCOMA Ltd., Shoumen, Bulgaria.
+
+For the models, cite: 
+
 Maria Irena Szawerna, Simon Dobnik, Ricardo Muñoz Sánchez, and Elena Volodina. 2025. [The Devil’s in the Details: the Detailedness of Classes Influences Personal Information Detection and Labeling](https://aclanthology.org/2025.nodalida-1.70/). In _Proceedings of the Joint 25th Nordic Conference on Computational Linguistics and 11th Baltic Conference on Human Language Technologies (NoDaLiDa/Baltic-HLT 2025)_, pages 697–708, Tallinn, Estonia. University of Tartu Library.
 
 
