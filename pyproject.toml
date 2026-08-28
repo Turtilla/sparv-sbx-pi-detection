@@ -1,6 +1,6 @@
 [project]
 name = "sparv-sbx-pi-detection"
-version = "0.1.0"
+version = "0.1.1"
 description = "Personal Information Detection tool"
 readme = "README.md"
 license.text = "MIT License"
@@ -10,6 +10,9 @@ license.text = "MIT License"
 dependencies = [
     "sparv-pipeline~=5.0",
     "transformers>=4.51.3",
-    "torch"
+    "torch",
+    "langchain_ollama",
+    "pydantic",
+    "typing"
 ]
 entry-points."sparv.plugin" = { sbx_pi_detection = "sbx_pi_detection" }

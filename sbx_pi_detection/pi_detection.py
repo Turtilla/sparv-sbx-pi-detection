@@ -1,39 +1,52 @@
 from sparv.api import Annotation, Output, annotator, get_logger, Config
 from transformers import AutoTokenizer, AutoModelForTokenClassification
-import torch    
-import os
+import json, langchain_ollama, torch, pydantic
+from typing import List
 
 logger = get_logger(__name__)
 
 @annotator("Annotate the data with PI entities.", 
            language=["swe"],
            config = [
-               Config("sbx_pi_detection.annotation_level", default="detailed_iob", description="Annotation type (and, consequently, model) to use.")
+               Config("sbx_pi_detection.annotation_level", default="detailed_iob", description="Annotation type (and, consequently, model) to use."),
+               Config("sbx_pi_detection.generative_model", default="None", description="Generative model to use for annotation. Requires Ollama installed. Default: None. Renders annotation_level irrelevant. Requires a specified prompt_path and batch_size."),
+               Config("sbx_pi_detection.prompt_path", default="None", description="Path to a .txt file containing the system prompt to be used to obtain the annotation. Requires Ollama installed. Default: None. Renders annotation_level irrelevant. Requires a specified generative_model and batch_size."),
+               Config("sbx_pi_detection.batch_size", default="None", description="Batch size for the LLM processing. Requires Ollama installed. Default: None. Renders annotation_level irrelevant. Requires a specified generative_model and prompt_path.")
            ]
-           )
+           )  
+
 def pi_detection(
     word: Annotation = Annotation("<token:word>"),
-    out: Output = Output("<token>:sbx_pi_detection.pi", description="The type of personal information that the token has: O if it is not personal information or one of the tags defined by the model selected via the configuration."),
-    annotation_level: str = Config("sbx_pi_detection.annotation_level")
+    out: Output = Output("<token>:sbx_pi_detection.pi", description="The type of personal information that the token has: O if it is not personal information or one of the tags defined by the model or prompt selected via the configuration."),
+    annotation_level: str = Config("sbx_pi_detection.annotation_level"),
+    generative_model: str = Config("sbx_pi_detection.generative_model"),
+    prompt_path: str = Config("sbx_pi_detection.prompt_path"),
+    batch_size: int = Config("sbx_pi_detection.batch_size")
     ):
-    # get the model path when the model comes with the plugin
-    # set up tokenizer and model
-    try:
-        tokenizer = AutoTokenizer.from_pretrained(MODELS[annotation_level])
-        model = AutoModelForTokenClassification.from_pretrained(MODELS[annotation_level])
-    except:
-        logger.warning(f"The requested annotation type {annotation_level} does not exist. Defaulting to detailed_iob.")
-        tokenizer = AutoTokenizer.from_pretrained(MODELS['detailed_iob'])
-        model = AutoModelForTokenClassification.from_pretrained(MODELS['detailed_iob'])
+    if generative_model != "None" and prompt_path != "None" and batch_size != "None":
+        # get LLM predictions
+        predictions = get_llm_preds([val for val in word.read()], generative_model, prompt_path, batch_size)
+        # write output
+        out.write(predictions)
+    else:
+        # get the model path when the model comes with the plugin
+        # set up tokenizer and model
+        try:
+            tokenizer = AutoTokenizer.from_pretrained(MODELS[annotation_level])
+            model = AutoModelForTokenClassification.from_pretrained(MODELS[annotation_level])
+        except:
+            logger.warning(f"The requested annotation type {annotation_level} does not exist. Defaulting to detailed_iob.")
+            tokenizer = AutoTokenizer.from_pretrained(MODELS['detailed_iob'])
+            model = AutoModelForTokenClassification.from_pretrained(MODELS['detailed_iob'])
 
-    # chunk the input to max model length
-    subsplits = trim_to_max_len([val for val in word.read()], tokenizer)  
-    # get model predictions for subword tokens
-    predictions = [get_preds(subsplit, tokenizer, model) for subsplit in subsplits]
-    # flatten
-    predictions = [pred for subsplit in predictions for pred in subsplit]
-    # write predictions out
-    out.write([p[1] for p in predictions])
+        # chunk the input to max model length
+        subsplits = trim_to_max_len([val for val in word.read()], tokenizer)  
+        # get model predictions for subword tokens
+        predictions = [get_preds(subsplit, tokenizer, model) for subsplit in subsplits]
+        # flatten
+        predictions = [pred for subsplit in predictions for pred in subsplit]
+        # write predictions out
+        out.write([p[1] for p in predictions])
 
 def trim_to_max_len(
     text: list,
@@ -102,6 +115,60 @@ def get_preds(
         one_pred_per_word.append((item[0], word_predictions[0]))
          
     return one_pred_per_word
+
+
+def get_llm_preds(text: list, generative_model: str, prompt_path: str, batch_size: int):
+    # define output shape
+    AnnotationResponse = pydantic.RootModel[List[str]]
+    # load prompt    
+    with open(prompt_path) as f:
+        system_prompt = f.read()
+    # define LLM    
+    llm = langchain_ollama.ChatOllama(
+        model=generative_model,
+        temperature=0,
+        num_predict=2048,
+        num_ctx=4096
+    )
+    structured_llm = llm.with_structured_output(AnnotationResponse)
+    # set up variables    
+    sent_len = len(text)
+    all_anns = []
+    # iterate over batches
+    for i in range(0, sent_len, batch_size):
+        # set up batch inputs
+        inputs = text[i:i+batch_size]
+        indexed_batch = [{"id": i + idx, "token": t} for idx, t in enumerate(inputs)]
+        # set up prompt messages
+        messages = [
+                {
+                    "role": "system",
+                    "content": (
+                        system_prompt,
+                        f"You MUST generate exactly {len(inputs)} items in the output array. "
+                        "Do not skip any tokens in this batch."
+                    )
+                },
+                {
+                    "role": "user",
+                    "content": f"Annotate this batch: {json.dumps(indexed_batch)}"
+                }
+            ]    
+        try:
+            # get preds
+            output = structured_llm.invoke(messages)
+            anns = output.root
+            # fill missing values
+            if len(anns) < batch_size:
+                anns.append(['ANNOTATION_ERROR']*(batch_size-len(anns)))
+            all_anns.extend(anns[:batch_size])
+            logger.info(f"Successfully processed tokens {i} to {i + len(inputs)}")
+        except Exception as e:
+            # fill missing values
+            logger.warning(f"Error processing batch starting at index {i}: {e}")
+            anns = ['ANNOTATION_ERROR']*batch_size
+            all_anns.extend(anns)
+    return all_anns[:sent_len]
 
 MODELS = {
     'basic': 'sbx/KB-bert-base-swedish-cased_PI-detection-basic',

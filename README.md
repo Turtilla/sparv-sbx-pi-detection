@@ -2,6 +2,8 @@
 
 A plugin for [Sparv](https://spraakbanken.gu.se/sparv/) for detecting personal information in Swedish texts, especially learner essays (_note: performs noticeably worse on other domains, but the models used for annotation will likely be updated in the future)_.  
 
+**Note that this plugin does not guarantee full accuracy of predictions and should only be used to assist PII annotation or de-identification procedures, with a human verifying the final result.**
+
 ## Install
 
 1. Install [Sparv](https://spraakbanken.gu.se/sparv/):  
@@ -29,6 +31,7 @@ _In case you need to uninstall the plugin:_
 ```
 pipx runpip sparv uninstall sparv-sbx-pi-detection
 ```
+**NOTE: If you want to use a genLLM to obtain predictions, you must install Ollama!** For instructions on how to do that, look [here](https://ollama.com/download/linux).
 
 ## Usage
 
@@ -43,6 +46,20 @@ sbx_pi_detection:
   annotation_level: general
 ```
 
+Alternatively, if you want to use a generative LLM with Ollama for this task, you have to specify three other arguments in the configuration, namely `generative_model`, `prompt_path`, and `batch_size`. The model name should correspond to a model available via Ollama. The prompt path should point to a .txt file with the text of your prompt (see [example prompt file](https://github.com/spraakbanken/sparv-sbx-pi-detection/blob/main/sbx_pi_detection/testprompt/prompt.txt)). The batch size should be an integer that determines how many tokens the model gets to see at once:
+
+```
+export:
+  annotations:
+    - <token>
+    - <token>:sbx_pi_detection.pi
+sbx_pi_detection:
+  generative_model: gemma4
+  prompt_path: ../testprompt/prompt.txt
+  batch_size: 8
+```
+Note that you may want to tweak the prompt file to match your use case, e.g. by changing the classes the model should assign to PII entities or providing definitions for said classes. It is highly recommended to keep the first line of the example prompt.
+
 See also the [example corpus config file](https://github.com/spraakbanken/sparv-sbx-pi-detection/blob/main/sbx_pi_detection/testkorpus/config.yaml).
 
 ## Models
@@ -50,6 +67,8 @@ See also the [example corpus config file](https://github.com/spraakbanken/sparv-
 All of the models used in this plugin are classifiers based on [KB-BERT](https://huggingface.co/KB/bert-base-swedish-cased). They can be found [here](https://huggingface.co/collections/Turtilla/pi-detection-and-labeling-6822fbc8fbccfc2527c019ba). See [this publication](https://aclanthology.org/2025.nodalida-1.70/) for training details.  
 
 See the webpage of the [Mormor Karl project](https://mormor-karl.github.io/) for more information on the work we do on automatic pseudonymization of research data.
+
+When using a genLLM with Ollama, you can first explore the models available in its [library](https://ollama.com/library).
 
 ## Citing
 
