@@ -1,6 +1,6 @@
 from sparv.api import Annotation, Output, annotator, get_logger, Config
 from transformers import AutoTokenizer, AutoModelForTokenClassification
-import json, langchain_ollama, torch, pydantic
+import json, langchain_ollama, torch, pydantic, ollama
 from typing import List
 
 logger = get_logger(__name__)
@@ -24,18 +24,30 @@ def pi_detection(
     batch_size: int = Config("sbx_pi_detection.batch_size")
     ):
     if generative_model != "None" and prompt_path != "None" and batch_size != "None":
-        # get LLM predictions
-        predictions = get_llm_preds([val for val in word.read()], generative_model, prompt_path, batch_size)
-        # write output
+        try:
+            # get LLM predictions
+            ollama.pull(generative_model)
+            predictions = get_llm_preds([val for val in word.read()], generative_model, prompt_path, batch_size)
+        except:
+            logger.warning(f"The requested model {generative_model} does not exist. Defaulting to gemma4:latest.")
+            ollama.pull('gemma4:latest')
+            predictions = get_llm_preds([val for val in word.read()], 'gemma4:latest', prompt_path, batch_size)
+            # write output
         out.write(predictions)
+            
     else:
         # get the model path when the model comes with the plugin
         # set up tokenizer and model
         try:
-            tokenizer = AutoTokenizer.from_pretrained(MODELS[annotation_level])
-            model = AutoModelForTokenClassification.from_pretrained(MODELS[annotation_level])
-        except:
-            logger.warning(f"The requested annotation type {annotation_level} does not exist. Defaulting to detailed_iob.")
+            if annotation_level in MODELS.keys():
+                tokenizer = AutoTokenizer.from_pretrained(MODELS[annotation_level])
+                model = AutoModelForTokenClassification.from_pretrained(MODELS[annotation_level])
+            else:
+                tokenizer = AutoTokenizer.from_pretrained(annotation_level)
+                model = AutoModelForTokenClassification.from_pretrained(annotation_level)
+                assert hasattr(model, 'classifier') or hasattr(model, 'score')             
+        except:    
+            logger.warning(f"The requested model or annotation type {annotation_level} does not exist. Defaulting to detailed_iob.")
             tokenizer = AutoTokenizer.from_pretrained(MODELS['detailed_iob'])
             model = AutoModelForTokenClassification.from_pretrained(MODELS['detailed_iob'])
 
@@ -145,13 +157,16 @@ def get_llm_preds(text: list, generative_model: str, prompt_path: str, batch_siz
                     "role": "system",
                     "content": (
                         system_prompt,
-                        f"You MUST generate exactly {len(inputs)} items in the output array. "
+                        f"Generate only the personal information tags for the input strings in an array. You MUST generate exactly {len(inputs)} items in the output array. "
                         "Do not skip any tokens in this batch."
                     )
                 },
                 {
                     "role": "user",
-                    "content": f"Annotate this batch: {json.dumps(indexed_batch)}"
+                    "content": (
+                        f"The full context for the text is {' '.join(text)}"
+                        f"Annotate this batch: {json.dumps(indexed_batch)}"
+                        )
                 }
             ]    
         try:
@@ -171,10 +186,10 @@ def get_llm_preds(text: list, generative_model: str, prompt_path: str, batch_siz
     return all_anns[:sent_len]
 
 MODELS = {
-    'basic': 'sbx/KB-bert-base-swedish-cased_PI-detection-basic',
-    'basic_iob': 'sbx/KB-bert-base-swedish-cased_PI-detection-basic-iob',
-    'detailed': 'sbx/KB-bert-base-swedish-cased_PI-detection-detailed',
-    'detailed_iob': 'sbx/KB-bert-base-swedish-cased_PI-detection-detailed-iob',
-    'general': 'sbx/KB-bert-base-swedish-cased_PI-detection-general',
-    'general_iob': 'sbx/KB-bert-base-swedish-cased_PI-detection-general-iob'
+    'basic': 'sbx/KB-bert-swedish_PI-detection-basic',
+    'basic_iob': 'sbx/KB-bert-swedish_PI-detection-basic-iob',
+    'detailed': 'sbx/KB-bert-swedish_PI-detection-detailed',
+    'detailed_iob': 'sbx/KB-bert-swedish_PI-detection-detailed-iob',
+    'general': 'sbx/KB-bert-swedish_PI-detection-general',
+    'general_iob': 'sbx/KB-bert-swedish_PI-detection-general-iob'
 }

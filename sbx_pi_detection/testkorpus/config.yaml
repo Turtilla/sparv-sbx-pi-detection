@@ -10,7 +10,7 @@ export:
     - <token>
     - <token>:sbx_pi_detection.pi
 sbx_pi_detection:
-  annotation_level: general
-  generative_model: gemma4
+  annotation_level: sbx/KB-bert-swedish_PI-detection-general
+  generative_model: gemma4:latest
   prompt_path: ../testprompt/prompt.txt
   batch_size: 8

@@ -35,7 +35,7 @@ pipx runpip sparv uninstall sparv-sbx-pi-detection
 
 ## Usage
 
-In your `config.yaml` file for corpus configuration, you can now specify `sbx_pi_detection.pi` as a token annotation alongside one of the 6 annotation types (`basic, basic_iob, general, general_iob, detailed, detailed_iob`). The differences are described in [this publication](https://aclanthology.org/2025.nodalida-1.70/). Effectively, you need to include the following elements in your corpus configuration (substituting `general` for the annotation level you want):  
+In your `config.yaml` file for corpus configuration, you can now specify `sbx_pi_detection.pi` as a token annotation alongside one of the 6 annotation types (`basic, basic_iob, general, general_iob, detailed, detailed_iob`). The differences are described in [this publication](https://aclanthology.org/2025.nodalida-1.70/). Effectively, you need to include the following elements in your corpus configuration (substituting `general` for the annotation level you want). You can also specify a HuggingFace model name or local path (e.g. `sbx/KB-bert-swedish_PI-detection-general` in this model's case) to easily access your own models or models not provided in the plugin by default:  
 
 ```
 export:
@@ -54,7 +54,7 @@ export:
     - <token>
     - <token>:sbx_pi_detection.pi
 sbx_pi_detection:
-  generative_model: gemma4
+  generative_model: gemma4:12b
   prompt_path: ../testprompt/prompt.txt
   batch_size: 8
 ```

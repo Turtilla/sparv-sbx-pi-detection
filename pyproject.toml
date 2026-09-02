@@ -10,9 +10,9 @@ license.text = "MIT License"
 dependencies = [
     "sparv-pipeline~=5.0",
     "transformers>=4.51.3",
-    "torch",
-    "langchain_ollama",
-    "pydantic",
-    "typing"
+    "torch>=2.10",
+    "langchain_ollama>=1.1.0",
+    "pydantic>=2.13.4",
+    "ollama>=0.6.2"
 ]
 entry-points."sparv.plugin" = { sbx_pi_detection = "sbx_pi_detection" }
