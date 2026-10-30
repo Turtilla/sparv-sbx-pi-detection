@@ -12,5 +12,6 @@ export:
 sbx_pi_detection:
   annotation_level: sbx/KB-bert-swedish_PI-detection-general
   generative_model: gemma4:latest
-  prompt_path: ../testprompt/prompt.txt
-  batch_size: 8
+  prompt_path: ./prompt.txt
+  context_size: 8
+  ollama_args: {'temperature': 0.1, top_k: 10}
