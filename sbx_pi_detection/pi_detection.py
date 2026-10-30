@@ -27,18 +27,27 @@ def pi_detection(
     ):
     if generative_model != "None" and prompt_path != "None" and context_size != "None":
         if ollama_args != "None":
+            ollama_args["model"] = generative_model
+            ollama_args["reasoning"] = False
             if 'temperature' not in list(ollama_args.keys()):
                 ollama_args["temperature"] = 0
+            if 'num_predict' not in list(ollama_args.keys()):
+                ollama_args["num_predict"] = 2048
+            if 'num_ctx' not in list(ollama_args.keys()):
+                ollama_args["num_ctx"] = 4096
+            if 'seed' not in list(ollama_args.keys()):
+                ollama_args["seed"] = 42
         else:
-            ollama_args = {'temperature': 0}
+            ollama_args = {'temperature': 0, "num_predict": 2048, "num_ctx": 4096, "seed": 42, "model": generative_model, "reasoning": False}
         try:
             # get LLM predictions
             ollama.pull(generative_model)
-            predictions = get_llm_preds([val for val in word.read()], generative_model, prompt_path, context_size, ollama_args)
+            predictions = get_llm_preds([val for val in word.read()], prompt_path, context_size, ollama_args)
         except:
             logger.warning(f"The requested model {generative_model} does not exist. Defaulting to gemma4:latest.")
             ollama.pull('gemma4:latest')
-            predictions = get_llm_preds([val for val in word.read()], 'gemma4:latest', prompt_path, context_size, ollama_args)
+            ollama_args["model"] = 'gemma4:latest'
+            predictions = get_llm_preds([val for val in word.read()], prompt_path, context_size, ollama_args)
             # write output
         out.write(predictions)
             
@@ -136,7 +145,7 @@ def get_preds(
     return one_pred_per_word
 
 
-def get_llm_preds(text: list, generative_model: str, prompt_path: str, context_size: int, ollama_args: dict):
+def get_llm_preds(text: list, prompt_path: str, context_size: int, ollama_args: dict):
     # define output shape
     AnnotationResponse = pydantic.RootModel[List[str]]
     # load prompt    
@@ -144,13 +153,9 @@ def get_llm_preds(text: list, generative_model: str, prompt_path: str, context_s
         system_prompt = f.read()
     # define LLM    
     llm = langchain_ollama.ChatOllama(
-        model=generative_model,
-        reasoning=False,
-        num_predict=2048,
-        num_ctx=4096,
-        seed=42,
         **ollama_args
     )
+    logger.info(llm.__dict__)
     structured_llm = llm.with_structured_output(AnnotationResponse)
     # set up variables    
     sent_len = len(text)
