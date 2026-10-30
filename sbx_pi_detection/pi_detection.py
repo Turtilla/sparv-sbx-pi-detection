@@ -10,8 +10,9 @@ logger = get_logger(__name__)
            config = [
                Config("sbx_pi_detection.annotation_level", default="detailed_iob", description="Annotation type (and, consequently, model) to use."),
                Config("sbx_pi_detection.generative_model", default="None", description="Generative model to use for annotation. Requires Ollama installed. Default: None. Renders annotation_level irrelevant. Requires a specified prompt_path and batch_size."),
-               Config("sbx_pi_detection.prompt_path", default="None", description="Path to a .txt file containing the system prompt to be used to obtain the annotation. Requires Ollama installed. Default: None. Renders annotation_level irrelevant. Requires a specified generative_model and batch_size."),
-               Config("sbx_pi_detection.batch_size", default="None", description="Batch size for the LLM processing. Requires Ollama installed. Default: None. Renders annotation_level irrelevant. Requires a specified generative_model and prompt_path.")
+               Config("sbx_pi_detection.prompt_path", default="None", description="Path to a .txt file containing the system prompt to be used to obtain the annotation. Requires Ollama installed. Default: None. Renders annotation_level irrelevant. Requires a specified generative_model and context_size."),
+               Config("sbx_pi_detection.context_size", default="None", description="Batch size for the LLM processing. Requires Ollama installed. Default: None. Renders annotation_level irrelevant. Requires a specified generative_model and prompt_path."),
+               Config("sbx_pi_detection.ollama_args", default="None", description="Other optional arguments for Ollama. Must be formatted as a dictionary with keys being argument names from here: https://reference.langchain.com/python/langchain-ollama/chat_models/ChatOllama . Requires Ollama installed. Default: None. Renders annotation_level irrelevant. Requires a specified generative_model and prompt_path.")
            ]
            )  
 
@@ -21,17 +22,23 @@ def pi_detection(
     annotation_level: str = Config("sbx_pi_detection.annotation_level"),
     generative_model: str = Config("sbx_pi_detection.generative_model"),
     prompt_path: str = Config("sbx_pi_detection.prompt_path"),
-    batch_size: int = Config("sbx_pi_detection.batch_size")
+    context_size: int = Config("sbx_pi_detection.context_size"),
+    ollama_args: dict = Config("sbx_pi_detection.ollama_args"),
     ):
-    if generative_model != "None" and prompt_path != "None" and batch_size != "None":
+    if generative_model != "None" and prompt_path != "None" and context_size != "None":
+        if ollama_args != "None":
+            if 'temperature' not in list(ollama_args.keys()):
+                ollama_args["temperature"] = 0
+        else:
+            ollama_args = {'temperature': 0}
         try:
             # get LLM predictions
             ollama.pull(generative_model)
-            predictions = get_llm_preds([val for val in word.read()], generative_model, prompt_path, batch_size)
+            predictions = get_llm_preds([val for val in word.read()], generative_model, prompt_path, context_size, ollama_args)
         except:
             logger.warning(f"The requested model {generative_model} does not exist. Defaulting to gemma4:latest.")
             ollama.pull('gemma4:latest')
-            predictions = get_llm_preds([val for val in word.read()], 'gemma4:latest', prompt_path, batch_size)
+            predictions = get_llm_preds([val for val in word.read()], 'gemma4:latest', prompt_path, context_size, ollama_args)
             # write output
         out.write(predictions)
             
@@ -129,7 +136,7 @@ def get_preds(
     return one_pred_per_word
 
 
-def get_llm_preds(text: list, generative_model: str, prompt_path: str, batch_size: int):
+def get_llm_preds(text: list, generative_model: str, prompt_path: str, context_size: int, ollama_args: dict):
     # define output shape
     AnnotationResponse = pydantic.RootModel[List[str]]
     # load prompt    
@@ -138,18 +145,20 @@ def get_llm_preds(text: list, generative_model: str, prompt_path: str, batch_siz
     # define LLM    
     llm = langchain_ollama.ChatOllama(
         model=generative_model,
-        temperature=0,
+        reasoning=False,
         num_predict=2048,
-        num_ctx=4096
+        num_ctx=4096,
+        seed=42,
+        **ollama_args
     )
     structured_llm = llm.with_structured_output(AnnotationResponse)
     # set up variables    
     sent_len = len(text)
     all_anns = []
     # iterate over batches
-    for i in range(0, sent_len, batch_size):
+    for i in range(0, sent_len, context_size):
         # set up batch inputs
-        inputs = text[i:i+batch_size]
+        inputs = text[i:i+context_size]
         indexed_batch = [{"id": i + idx, "token": t} for idx, t in enumerate(inputs)]
         # set up prompt messages
         messages = [
@@ -174,14 +183,14 @@ def get_llm_preds(text: list, generative_model: str, prompt_path: str, batch_siz
             output = structured_llm.invoke(messages)
             anns = output.root
             # fill missing values
-            if len(anns) < batch_size:
-                anns.append(['ANNOTATION_ERROR']*(batch_size-len(anns)))
-            all_anns.extend(anns[:batch_size])
+            if len(anns) < context_size:
+                anns.append(['ANNOTATION_ERROR']*(context_size-len(anns)))
+            all_anns.extend(anns[:context_size])
             logger.info(f"Successfully processed tokens {i} to {i + len(inputs)}")
         except Exception as e:
             # fill missing values
             logger.warning(f"Error processing batch starting at index {i}: {e}")
-            anns = ['ANNOTATION_ERROR']*batch_size
+            anns = ['ANNOTATION_ERROR']*context_size
             all_anns.extend(anns)
     return all_anns[:sent_len]
 
